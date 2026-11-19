@@ -6,18 +6,13 @@
 
   $('#yr').textContent = new Date().getFullYear();
 
-  const nav = $('#nav'), bar = $('.progress'), burger = $('.burger'), menu = $('#menu');
+  const nav = $('#nav'), bar = $('.progress');
   const onScroll = () => {
     const h = document.documentElement.scrollHeight - innerHeight;
     bar.style.transform = `scaleX(${h > 0 ? scrollY / h : 0})`;
     nav.classList.toggle('solid', scrollY > 30);
   };
   addEventListener('scroll', onScroll, { passive: true }); onScroll();
-
-  const setMenu = o => { menu.classList.toggle('open', o); burger.setAttribute('aria-expanded', o); };
-  burger.addEventListener('click', () => setMenu(!menu.classList.contains('open')));
-  $$('a', menu).forEach(a => a.addEventListener('click', () => setMenu(false)));
-  addEventListener('keydown', e => e.key === 'Escape' && setMenu(false));
 
   const count = el => {
     const end = +el.dataset.n, s = el.dataset.s || '';
