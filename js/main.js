@@ -86,6 +86,92 @@
     });
   }
 
+  const localizePrices = async () => {
+    const note = $('#localized-pricing-note');
+    const cacheKey = 'boisites-local-prices-v1';
+
+    try {
+      let location;
+      let exchange;
+
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const value = JSON.parse(cached);
+        if (Date.now() - value.time < 6 * 60 * 60 * 1000) {
+          location = value.location;
+          exchange = value.exchange;
+        }
+      }
+
+      if (!location) {
+        try {
+          const locationResponse = await fetch('https://ipapi.co/json/', {
+            headers: { Accept: 'application/json' }
+          });
+          if (!locationResponse.ok) throw new Error('Primary IP lookup failed');
+          location = await locationResponse.json();
+        } catch {
+          const fallbackResponse = await fetch(
+            'https://ip-api.com/json/?fields=status,message,country,countryCode,currency,language,query'
+          );
+          if (!fallbackResponse.ok) throw new Error('IP lookup failed');
+          const fallbackLocation = await fallbackResponse.json();
+          if (fallbackLocation.status !== 'success') throw new Error('IP lookup failed');
+          location = {
+            ip: fallbackLocation.query,
+            country_code: fallbackLocation.countryCode,
+            country_name: fallbackLocation.country,
+            currency_code: fallbackLocation.currency,
+            languages: fallbackLocation.language
+          };
+        }
+      }
+
+      if (!exchange) {
+        const exchangeResponse = await fetch('https://open.er-api.com/v6/latest/USD');
+        if (!exchangeResponse.ok) throw new Error('Exchange-rate lookup failed');
+        exchange = await exchangeResponse.json();
+        if (exchange.result !== 'success' || !exchange.rates) throw new Error('Exchange rates unavailable');
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          time: Date.now(),
+          location,
+          exchange
+        }));
+      }
+
+      const currency = String(location.currency_code || location.currency || (location.country_code === 'NG' ? 'NGN' : 'USD')).toUpperCase();
+      const targetRate = exchange.rates[currency];
+      const ngnRate = exchange.rates.NGN;
+      if (!targetRate || !ngnRate) return;
+
+      const locale = (location.languages || 'en').split(',')[0].trim() || 'en';
+      const format = new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: 0
+      });
+
+      $$('[data-base-ngn]').forEach(el => {
+        const baseNgn = Number(el.dataset.baseNgn);
+        if (!Number.isFinite(baseNgn)) return;
+        const baseUsd = baseNgn / ngnRate;
+        const surchargeUsd = String(location.country_code).toUpperCase() === 'NG' ? 0 : 10;
+        const localized = (baseUsd + surchargeUsd) * targetRate;
+        const prefix = el.dataset.prefix || '';
+        el.textContent = prefix + format.format(Math.round(localized));
+      });
+
+      const country = location.country_name || location.country || 'your country';
+      note.textContent = String(location.country_code).toUpperCase() === 'NG'
+        ? `IP-based local prices for ${country}.`
+        : `IP-based local prices for ${country}, including an additional $10 USD.`;
+    } catch {
+      if (note) note.textContent = 'Base prices shown in Nigerian naira; local conversion is unavailable.';
+    }
+  };
+
+  localizePrices();
+
   const form = $('#form'), err = $('#err');
   $$('[data-pick]').forEach(a => a.addEventListener('click', () => { form.service.value = a.dataset.pick; }));
   form.addEventListener('submit', e => {
